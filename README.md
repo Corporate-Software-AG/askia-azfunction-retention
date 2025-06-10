@@ -1,0 +1,1 @@
+# azfunction-askia-search-cleanup
