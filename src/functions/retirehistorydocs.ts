@@ -19,24 +19,52 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
     const now = Math.floor(Date.now() / 1000);
     const retireDate = now - historyRetentionDays * 24 * 60 * 60;
 
-    // Query for documents with _ts < retireDate and (isDeleted = false or isDeleted is null)
-    const query = {
-        query: "SELECT * FROM c WHERE c._ts < @ts AND (c.isDeleted = false OR IS_NULL(c.isDeleted))",
+    // 1. Fetch all CHAT_THREAD documents older than the retention period
+    const threadQuery = {
+        query: "SELECT * FROM c WHERE c.type = 'CHAT_THREAD' AND c._ts < @ts AND (c.isDeleted = false OR IS_NULL(c.isDeleted))",
         parameters: [
             { name: "@ts", value: retireDate }
         ]
     };
+    const { resources: oldThreads } = await container.items.query(threadQuery).fetchAll();
+    context.log(`Found ${oldThreads.length} CHAT_THREADs older than retention.`);
 
-    const { resources: oldDocs } = await container.items.query(query).fetchAll();
-    context.log(`Found ${oldDocs.length} documents not modified in the last 30 days.`);
-
-    for (const doc of oldDocs) {
-        doc.isDeleted = true;
-        try {
-            await container.item(doc.id, doc.userId).replace(doc);
-            context.log(`Set isDeleted=true for document id=${doc.id}`);
-        } catch (err) {
-            context.log(`Failed to update document id=${doc.id}: ${err}`);
+    for (const thread of oldThreads) {
+        // 2. Fetch all documents with chatThreadId or threadId equal to thread.id
+        const docsQuery = {
+            query: "SELECT * FROM c WHERE (c.chatThreadId = @id OR c.threadId = @id) AND (c.isDeleted = false OR IS_NULL(c.isDeleted))",
+            parameters: [
+                { name: "@id", value: thread.id }
+            ]
+        };
+        const { resources: relatedDocs } = await container.items.query(docsQuery).fetchAll();
+        // 3. Group and check if all are older than retention
+        if (relatedDocs.length === 0) {
+            context.log(`No related docs for thread id=${thread.id}`);
+            continue;
+        }
+        const allOld = relatedDocs.every(doc => doc._ts < retireDate);
+        if (allOld) {
+            // 4. Set isDeleted=true for all related docs
+            for (const doc of relatedDocs) {
+                doc.isDeleted = true;
+                try {
+                    await container.item(doc.id, doc.userId).replace(doc);
+                    context.log(`Set isDeleted=true for document id=${doc.id}`);
+                } catch (err) {
+                    context.log(`Failed to update document id=${doc.id}: ${err}`);
+                }
+            }
+            // Also set isDeleted=true for the thread itself
+            thread.isDeleted = true;
+            try {
+                await container.item(thread.id, thread.userId).replace(thread);
+                context.log(`Set isDeleted=true for thread id=${thread.id}`);
+            } catch (err) {
+                context.log(`Failed to update thread id=${thread.id}: ${err}`);
+            }
+        } else {
+            context.log(`Not all related docs for thread id=${thread.id} are old enough. Skipping.`);
         }
     }
 }
