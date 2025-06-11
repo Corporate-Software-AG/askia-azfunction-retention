@@ -14,6 +14,7 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
     const container = database.container("history");
 
     const historyRetentionDays = parseInt(process.env["HISTORY_RETENTION_DAYS"] || "30");
+    context.log(`History retention set to ${historyRetentionDays} days.`);
 
     // Calculate the epoch timestamp
     const now = Math.floor(Date.now() / 1000);
