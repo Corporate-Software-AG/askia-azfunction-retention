@@ -10,7 +10,7 @@ export async function deletedocs(documents: unknown[], context: InvocationContex
 
     for (const doc of deletedChatDocuments) {
         const chatThreadId = doc.chatThreadId;
-        context.log(`Deleting all search index docs with chatThreadId: ${chatThreadId}`);
+        context.info(`Deleting all search index docs with chatThreadId: ${chatThreadId}`);
 
         // Azure Search config from environment
         const searchName = process.env["AZURE_SEARCH_NAME"];
@@ -18,7 +18,7 @@ export async function deletedocs(documents: unknown[], context: InvocationContex
         const searchIndex = process.env["AZURE_SEARCH_INDEX"];
 
         if (!searchName || !searchApiKey || !searchIndex) {
-            context.log("Azure Search configuration missing.");
+            context.error("Azure Search configuration missing.");
             return;
         }
 
@@ -44,9 +44,9 @@ export async function deletedocs(documents: unknown[], context: InvocationContex
         }
         if (idsToDelete.length > 0) {
             await searchClient.deleteDocuments(idsToDelete);
-            context.log(`Deleted ${idsToDelete.length} documents from search index for chatThreadId: ${chatThreadId}`);
+            context.info(`Deleted ${idsToDelete.length} documents from search index for chatThreadId: ${chatThreadId}`);
         } else {
-            context.log(`No documents found in search index for chatThreadId: ${chatThreadId}`);
+            context.info(`No documents found in search index for chatThreadId: ${chatThreadId}`);
         }
     }
 
@@ -57,7 +57,7 @@ export async function deletedocs(documents: unknown[], context: InvocationContex
         // Get Cosmos DB client
         const cosmosConnectionString = process.env["DOCUMENTDB"];
         if (!cosmosConnectionString) {
-            context.log("Cosmos DB connection string missing.");
+            context.error("Cosmos DB connection string missing.");
             return;
         }
         const client = new CosmosClient(cosmosConnectionString);
@@ -66,9 +66,9 @@ export async function deletedocs(documents: unknown[], context: InvocationContex
         for (const doc of isDeletedDocuments) {
             try {
                 await container.item(doc.id, doc.userId).delete();
-                context.log(`Deleted document from Cosmos DB: id=${doc.id}, userId=${doc.userId}`);
+                context.info(`Deleted document from Cosmos DB: id=${doc.id}, userId=${doc.userId}`);
             } catch (err) {
-                context.log(`Failed to delete document id=${doc.id}: ${err}`);
+                context.error(`Failed to delete document id=${doc.id}: ${err}`);
             }
         }
     }

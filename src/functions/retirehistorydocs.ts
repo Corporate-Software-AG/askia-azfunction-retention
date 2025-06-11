@@ -6,7 +6,7 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
 
     const cosmosConnectionString = process.env["DOCUMENTDB"];
     if (!cosmosConnectionString) {
-        context.log("Cosmos DB connection string missing.");
+        context.error("Cosmos DB connection string missing.");
         return;
     }
     const client = new CosmosClient(cosmosConnectionString);
@@ -14,7 +14,7 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
     const container = database.container("history");
 
     const historyRetentionDays = parseInt(process.env["HISTORY_RETENTION_DAYS"] || "30");
-    context.log(`History retention set to ${historyRetentionDays} days.`);
+    context.info(`History retention set to ${historyRetentionDays} days.`);
 
     // Calculate the epoch timestamp
     const now = Math.floor(Date.now() / 1000);
@@ -42,6 +42,13 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
         // 3. Group and check if all are older than retention
         if (relatedDocs.length === 0) {
             context.log(`No related docs for thread id=${thread.id}`);
+            thread.isDeleted = true;
+            try {
+                await container.item(thread.id, thread.userId).replace(thread);
+                context.log(`Set isDeleted=true for thread id=${thread.id}`);
+            } catch (err) {
+                context.error(`Failed to update thread id=${thread.id}: ${err}`);
+            }
             continue;
         }
         const allOld = relatedDocs.every(doc => doc._ts < retireDate);
@@ -53,7 +60,7 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
                     await container.item(doc.id, doc.userId).replace(doc);
                     context.log(`Set isDeleted=true for document id=${doc.id}`);
                 } catch (err) {
-                    context.log(`Failed to update document id=${doc.id}: ${err}`);
+                    context.error(`Failed to update document id=${doc.id}: ${err}`);
                 }
             }
             // Also set isDeleted=true for the thread itself
@@ -62,10 +69,10 @@ export async function retirehistorydocs(myTimer: Timer, context: InvocationConte
                 await container.item(thread.id, thread.userId).replace(thread);
                 context.log(`Set isDeleted=true for thread id=${thread.id}`);
             } catch (err) {
-                context.log(`Failed to update thread id=${thread.id}: ${err}`);
+                context.error(`Failed to update thread id=${thread.id}: ${err}`);
             }
         } else {
-            context.log(`Not all related docs for thread id=${thread.id} are old enough. Skipping.`);
+            context.info(`Not all related docs for thread id=${thread.id} are old enough. Skipping.`);
         }
     }
 }
